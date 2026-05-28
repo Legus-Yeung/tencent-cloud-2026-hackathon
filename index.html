@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Bamboo: Mong Kok Nights</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #060812;
+      font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+    }
+
+    #game-container {
+      width: 100vw;
+      height: 100vh;
+      outline: none;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container" tabindex="0" aria-label="Neon Bamboo game area"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      const GAME_TITLE = "Neon Bamboo: Mong Kok Nights";
+      const BASE_WIDTH = 540;
+      const BASE_HEIGHT = 960;
+
+      const COLORS = {
+        bgTop: 0x080b1c,
+        bgBottom: 0x02030a,
+        bambooA: 0x6ddb5f,
+        bambooB: 0xd7df53,
+        neonCyan: 0x47f3ff,
+        neonMagenta: 0xff39be,
+        neonBlue: 0x4f72ff,
+        neonYellow: 0xfff255,
+        danger: 0xff5e67,
+        white: 0xf8fcff
+      };
+
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const choose = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+      class BootScene extends Phaser.Scene {
+        constructor() {
+          super("BootScene");
+        }
+
+        create() {
+          this.makeTextures();
+          this.scene.start("StartScene");
+        }
+
+        makeTextures() {
+          const g = this.add.graphics();
+
+          g.clear();
+          g.fillStyle(COLORS.white, 1);
+          g.fillRect(0, 0, 24, 32);
+          g.fillStyle(0x1a244d, 1);
+          g.fillRect(0, 22, 24, 10);
+          g.fillStyle(COLORS.neonYellow, 1);
+          g.fillRect(3, 3, 18, 8);
+          g.generateTexture("playerWorker", 24, 32);
+
+          g.clear();
+          g.fillStyle(COLORS.bambooA, 1);
+          g.fillRoundedRect(0, 0, 160, 12, 5);
+          g.lineStyle(2, COLORS.bambooB, 0.9);
+          g.strokeRoundedRect(0, 0, 160, 12, 5);
+          g.fillStyle(0x284c15, 0.5);
+          g.fillRect(0, 5, 160, 2);
+          g.generateTexture("bambooStable", 160, 12);
+
+          g.clear();
+          g.fillStyle(COLORS.bambooB, 1);
+          g.fillRoundedRect(0, 0, 160, 12, 5);
+          g.lineStyle(2, COLORS.danger, 0.9);
+          g.strokeRoundedRect(0, 0, 160, 12, 5);
+          g.fillStyle(0x8f3d00, 0.8);
+          g.fillRect(0, 5, 160, 2);
+          g.generateTexture("bambooUnstable", 160, 12);
+
+          g.clear();
+          g.fillStyle(0xa9b6c9, 1);
+          g.fillRect(0, 0, 46, 32);
+          g.fillStyle(0x7e8ca2, 1);
+          g.fillRect(2, 2, 42, 22);
+          g.fillStyle(0x515c70, 1);
+          g.fillRect(8, 24, 30, 8);
+          g.generateTexture("acUnit", 46, 32);
+
+          g.clear();
+          g.fillStyle(COLORS.neonCyan, 1);
+          g.fillCircle(10, 10, 10);
+          g.generateTexture("collectCircle", 20, 20);
+
+          g.clear();
+          g.fillStyle(COLORS.neonMagenta, 1);
+          g.fillRect(0, 0, 22, 22);
+          g.generateTexture("collectSquare", 22, 22);
+
+          g.clear();
+          g.fillStyle(COLORS.neonYellow, 1);
+          g.beginPath();
+          g.moveTo(12, 0);
+          g.lineTo(24, 24);
+          g.lineTo(0, 24);
+          g.closePath();
+          g.fillPath();
+          g.generateTexture("collectTriangle", 24, 24);
+
+          g.clear();
+          g.fillStyle(COLORS.neonBlue, 1);
+          g.fillRect(0, 8, 28, 12);
+          g.fillRect(8, 0, 12, 28);
+          g.generateTexture("collectCross", 28, 28);
+
+          g.destroy();
+        }
+      }
+
+      class BaseOverlayScene extends Phaser.Scene {
+        constructor(key) {
+          super(key);
+        }
+
+        createBackdrop(alpha = 0.62) {
+          const { width, height } = this.scale;
+          this.add.rectangle(width * 0.5, height * 0.5, width, height, 0x05070f, alpha);
+        }
+
+        bindConfirmKeys(callback) {
+          let triggered = false;
+          const canvas = this.game.canvas;
+          const container = this.game.config.parent ? document.getElementById(this.game.config.parent) : null;
+
+          const focusGame = () => {
+            if (container) container.focus();
+            if (canvas) canvas.focus();
+            window.focus();
+          };
+
+          const trigger = () => {
+            if (triggered) return;
+            triggered = true;
+            cleanup();
+            callback();
+          };
+
+          const onDomKeyDown = (event) => {
+            const code = event.code || event.key;
+            if (code === "Space" || code === "Enter" || code === "ArrowUp") {
+              event.preventDefault();
+              trigger();
+            }
+          };
+
+          const cleanup = () => {
+            window.removeEventListener("keydown", onDomKeyDown);
+            this.input.keyboard.off("keydown-SPACE", trigger);
+            this.input.keyboard.off("keydown-ENTER", trigger);
+            this.input.keyboard.off("keydown-UP", trigger);
+          };
+
+          focusGame();
+          this.time.delayedCall(100, focusGame);
+
+          this.input.keyboard.on("keydown-SPACE", trigger);
+          this.input.keyboard.on("keydown-ENTER", trigger);
+          this.input.keyboard.on("keydown-UP", trigger);
+          window.addEventListener("keydown", onDomKeyDown, { passive: false });
+
+          this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+          this.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
+        }
+      }
+
+      class StartScene extends BaseOverlayScene {
+        constructor() {
+          super("StartScene");
+        }
+
+        create() {
+          const { width, height } = this.scale;
+          this.createBackdrop(1);
+
+          const title = this.add.text(width * 0.5, height * 0.22, GAME_TITLE, {
+            fontFamily: "Trebuchet MS, Segoe UI, sans-serif",
+            fontSize: "48px",
+            color: "#7df9ff",
+            align: "center",
+            stroke: "#0b0d1f",
+            strokeThickness: 8
+          }).setOrigin(0.5);
+
+          title.setShadow(0, 0, "#ff39be", 18, true, true);
+
+          this.add.text(width * 0.5, height * 0.40,
+            "Climb the endless bamboo scaffold outside a Mong Kok tower.\n" +
+            "Collect glowing neon sign parts. Avoid falling AC units.\n" +
+            "Watch unstable poles before they snap.",
+            {
+              fontSize: "22px",
+              color: "#e6ecff",
+              align: "center",
+              lineSpacing: 10
+            }
+          ).setOrigin(0.5);
+
+          this.add.text(width * 0.5, height * 0.62,
+            "Arrow Keys: Move\nSpace or Up: Jump\nSpace / Enter / Up: Start",
+            {
+              fontSize: "26px",
+              color: "#fff255",
+              align: "center",
+              lineSpacing: 10
+            }
+          ).setOrigin(0.5);
+
+          const pulse = this.add.text(width * 0.5, height * 0.82, "PRESS SPACE TO START", {
+            fontSize: "34px",
+            color: "#ff39be",
+            stroke: "#2f1240",
+            strokeThickness: 6
+          }).setOrigin(0.5);
+
+          this.tweens.add({
+            targets: pulse,
+            alpha: { from: 1, to: 0.25 },
+            duration: 650,
+            yoyo: true,
+            repeat: -1
+          });
+
+          this.bindConfirmKeys(() => {
+            this.scene.start("GameScene", { restarted: false });
+          });
+        }
+      }
+
+      class GameOverScene extends BaseOverlayScene {
+        constructor() {
+          super("GameOverScene");
+        }
+
+        init(data) {
+          this.finalScore = data.score || 0;
+          this.heightClimbed = data.height || 0;
+          this.best = data.best || this.finalScore;
+        }
+
+        create() {
+          const { width, height } = this.scale;
+          this.createBackdrop(0.7);
+
+          this.add.text(width * 0.5, height * 0.30, "YOU FELL", {
+            fontSize: "72px",
+            color: "#ff5e67",
+            stroke: "#25050f",
+            strokeThickness: 10
+          }).setOrigin(0.5);
+
+          this.add.text(width * 0.5, height * 0.46,
+            "Night Shift Score: " + Math.floor(this.finalScore) +
+            "\nHeight Climbed: " + Math.floor(this.heightClimbed) + "m" +
+            "\nBest Shift: " + Math.floor(this.best),
+            {
+              fontSize: "30px",
+              color: "#d9e8ff",
+              align: "center",
+              lineSpacing: 10
+            }
+          ).setOrigin(0.5);
+
+          this.add.text(width * 0.5, height * 0.73, "SPACE / ENTER / UP TO RESTART", {
+            fontSize: "32px",
+            color: "#7df9ff",
+            stroke: "#0b1d36",
+            strokeThickness: 5
+          }).setOrigin(0.5);
+
+          this.bindConfirmKeys(() => {
+            this.scene.start("GameScene", { restarted: true });
+          });
+        }
+      }
+
+      class GameScene extends Phaser.Scene {
+        constructor() {
+          super("GameScene");
+          this.bestScore = 0;
+        }
+
+        init() {
+          this.gameRunning = false;
+          this.score = 0;
+          this.heightScore = 0;
+          this.lastGeneratedY = 0;
+          this.worldTop = 0;
+          this.baseScrollSpeed = 36;
+          this.jumpBufferMs = 130;
+          this.coyoteMs = 110;
+          this.lastJumpPressTime = -9999;
+          this.lastGroundedTime = -9999;
+        }
+
+        create() {
+          const { width, height } = this.scale;
+
+          this.setupInputFocus();
+          this.createBackdrop(width, height);
+          this.createGroups();
+          this.createPlayer(width, height);
+          this.createHUD(width, height);
+          this.createInitialPlatforms(width, height);
+          this.createCollisions();
+          this.createParticles();
+
+          this.gameRunning = true;
+        }
+
+        setupInputFocus() {
+          const canvas = this.game.canvas;
+          const container = this.game.config.parent ? document.getElementById(this.game.config.parent) : null;
+
+          if (container && !container.hasAttribute("tabindex")) {
+            container.setAttribute("tabindex", "0");
+          }
+          if (canvas && !canvas.hasAttribute("tabindex")) {
+            canvas.setAttribute("tabindex", "0");
+          }
+
+          const focusGame = () => {
+            if (container) container.focus();
+            if (canvas) canvas.focus();
+            window.focus();
+          };
+
+          focusGame();
+          this.time.delayedCall(120, focusGame);
+          window.addEventListener("pointerdown", focusGame, { passive: true });
+
+          this.input.keyboard.enabled = true;
+          this.cursors = this.input.keyboard.createCursorKeys();
+          this.jumpKeys = this.input.keyboard.addKeys({
+            jumpSpace: Phaser.Input.Keyboard.KeyCodes.SPACE,
+            jumpUp: Phaser.Input.Keyboard.KeyCodes.UP
+          });
+
+          this.domInput = {
+            left: false,
+            right: false,
+            up: false,
+            space: false,
+            justJump: false
+          };
+
+          this.onDomKeyDown = (event) => {
+            const code = event.code || event.key;
+            if (code === "ArrowLeft") this.domInput.left = true;
+            if (code === "ArrowRight") this.domInput.right = true;
+            if (code === "ArrowUp") {
+              if (!this.domInput.up) this.domInput.justJump = true;
+              this.domInput.up = true;
+            }
+            if (code === "Space") {
+              if (!this.domInput.space) this.domInput.justJump = true;
+              this.domInput.space = true;
+            }
+          };
+
+          this.onDomKeyUp = (event) => {
+            const code = event.code || event.key;
+            if (code === "ArrowLeft") this.domInput.left = false;
+            if (code === "ArrowRight") this.domInput.right = false;
+            if (code === "ArrowUp") this.domInput.up = false;
+            if (code === "Space") this.domInput.space = false;
+          };
+
+          this.onDomBlur = () => {
+            this.domInput.left = false;
+            this.domInput.right = false;
+            this.domInput.up = false;
+            this.domInput.space = false;
+            this.domInput.justJump = false;
+          };
+
+          window.addEventListener("keydown", this.onDomKeyDown, { passive: false });
+          window.addEventListener("keyup", this.onDomKeyUp, { passive: false });
+          window.addEventListener("blur", this.onDomBlur);
+
+          const cleanupGameInput = () => {
+            window.removeEventListener("pointerdown", focusGame);
+            window.removeEventListener("keydown", this.onDomKeyDown);
+            window.removeEventListener("keyup", this.onDomKeyUp);
+            window.removeEventListener("blur", this.onDomBlur);
+          };
+
+          this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanupGameInput);
+          this.events.once(Phaser.Scenes.Events.DESTROY, cleanupGameInput);
+        }
+
+        createBackdrop(width, height) {
+          this.bg = this.add.graphics();
+          this.drawBackground(width, height);
+
+          this.cityLights = this.add.graphics();
+          this.cityLights.fillStyle(0x102241, 0.55);
+          for (let i = 0; i < 110; i++) {
+            const x = Phaser.Math.Between(0, width);
+            const y = Phaser.Math.Between(0, height);
+            const w = Phaser.Math.Between(2, 5);
+            const h = Phaser.Math.Between(2, 12);
+            this.cityLights.fillRect(x, y, w, h);
+          }
+          this.cityLights.setScrollFactor(0);
+
+          this.bambooBackdrop = this.add.graphics();
+          this.bambooBackdrop.setScrollFactor(0.08);
+          this.bambooBackdrop.setDepth(1);
+          for (let i = 0; i < 24; i++) {
+            const x = Phaser.Math.Between(-80, width + 80);
+            const y = Phaser.Math.Between(-120, height + 120);
+            const len = Phaser.Math.Between(170, 340);
+            const angle = choose([28, -28, 62, -62, 90]) + Phaser.Math.Between(-6, 6);
+            const color = choose([0x4a8f3f, 0xb7bc4d, 0x5da24d]);
+            this.bambooBackdrop.lineStyle(4, color, 0.25);
+            this.bambooBackdrop.beginPath();
+            this.bambooBackdrop.moveTo(x, y);
+            this.bambooBackdrop.lineTo(
+              x + Math.cos(Phaser.Math.DegToRad(angle)) * len,
+              y + Math.sin(Phaser.Math.DegToRad(angle)) * len
+            );
+            this.bambooBackdrop.strokePath();
+          }
+        }
+
+        drawBackground(width, height) {
+          this.bg.clear();
+          this.bg.fillGradientStyle(COLORS.bgTop, COLORS.bgTop, COLORS.bgBottom, COLORS.bgBottom, 1);
+          this.bg.fillRect(0, 0, width, height);
+          this.bg.setScrollFactor(0);
+        }
+
+        createGroups() {
+          this.platforms = this.physics.add.staticGroup();
+          this.collectibles = this.physics.add.group({
+            allowGravity: false,
+            immovable: true
+          });
+          this.hazards = this.physics.add.group({
+            collideWorldBounds: false
+          });
+        }
+
+        createPlayer(width, height) {
+          this.player = this.physics.add.sprite(width * 0.5, height - 120, "playerWorker");
+          this.player.setCollideWorldBounds(false);
+          this.player.setBounce(0);
+          this.player.setDragX(1200);
+          this.player.setMaxVelocity(320, 1200);
+          this.player.setDepth(10);
+
+          const body = this.player.body;
+          body.setSize(18, 30);
+          body.setOffset(3, 2);
+        }
+
+        createHUD(width, height) {
+          this.scoreText = this.add.text(16, 14, "Score: 0", {
+            fontSize: "28px",
+            color: "#f8fcff",
+            stroke: "#111a38",
+            strokeThickness: 6
+          }).setScrollFactor(0).setDepth(100);
+
+          this.heightText = this.add.text(16, 50, "Height: 0m", {
+            fontSize: "22px",
+            color: "#7df9ff",
+            stroke: "#0e1e2f",
+            strokeThickness: 5
+          }).setScrollFactor(0).setDepth(100);
+
+          this.speedText = this.add.text(width - 16, 14, "Pace x1.0", {
+            fontSize: "22px",
+            color: "#fff255",
+            stroke: "#221805",
+            strokeThickness: 5
+          }).setScrollFactor(0).setOrigin(1, 0).setDepth(100);
+        }
+
+        createInitialPlatforms(width, height) {
+          const levels = 14;
+          const spacing = 94;
+          let y = height - 70;
+
+          // Guarantee the spawn starts grounded on a stable bamboo path.
+          const spawnBase = this.platforms.create(width * 0.5, height - 54, "bambooStable");
+          spawnBase.setScale(1.08, 1);
+          spawnBase.refreshBody();
+          spawnBase.isUnstable = false;
+          spawnBase.triggered = false;
+          spawnBase.depth = 4;
+
+          for (let i = 0; i < levels; i++) {
+            this.spawnPlatformRow(y, width, 0, {
+              forceLane: i < 4 ? 2 : null,
+              forceStable: i < 2
+            });
+            y -= spacing;
+          }
+
+          this.lastGeneratedY = y;
+          this.worldTop = y;
+        }
+
+        spawnPlatformRow(y, worldWidth, difficulty, options = {}) {
+          const laneCount = 5;
+          const laneWidth = worldWidth / laneCount;
+          const maxMissing = difficulty > 0.6 ? 2 : 1;
+          let missing = 0;
+
+          for (let lane = 0; lane < laneCount; lane++) {
+            const laneIsForced = options.forceLane === lane;
+            if (!laneIsForced && Math.random() < 0.18 + difficulty * 0.18 && missing < maxMissing) {
+              missing++;
+              continue;
+            }
+
+            const px = laneWidth * lane + laneWidth * 0.5 + Phaser.Math.Between(-16, 16);
+            const unstableChance = 0.08 + difficulty * 0.18;
+            const isUnstable = options.forceStable ? false : Math.random() < unstableChance;
+            const tex = isUnstable ? "bambooUnstable" : "bambooStable";
+
+            const platform = this.platforms.create(px, y, tex);
+            platform.refreshBody();
+            // Variable path length with wider variance; tighter as difficulty rises.
+            const minScale = Phaser.Math.Linear(0.44, 0.36, difficulty);
+            const maxScale = Phaser.Math.Linear(1.04, 0.92, difficulty);
+            platform.setScale(Phaser.Math.FloatBetween(minScale, maxScale), 1);
+            platform.refreshBody();
+
+            platform.isUnstable = isUnstable;
+            platform.triggered = false;
+            platform.depth = 4;
+
+            if (Math.random() < 0.40) {
+              this.spawnCollectible(px + Phaser.Math.Between(-26, 26), y - 34);
+            }
+          }
+
+          if (Math.random() < 0.22 + difficulty * 0.35) {
+            this.spawnHazard(Phaser.Math.Between(26, worldWidth - 26), y - Phaser.Math.Between(240, 420), difficulty);
+          }
+        }
+
+        spawnCollectible(x, y) {
+          const keys = ["collectCircle", "collectSquare", "collectTriangle", "collectCross"];
+          const key = choose(keys);
+          const item = this.collectibles.create(x, y, key);
+          item.setScale(Phaser.Math.FloatBetween(0.8, 1.15));
+          item.setTint(choose([COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonBlue, COLORS.neonYellow]));
+          item.body.setCircle ? item.body.setCircle(item.width * 0.35) : null;
+          item.body.setAllowGravity(false);
+          item.body.immovable = true;
+          item.body.moves = false;
+          item.setDepth(6);
+
+          this.tweens.add({
+            targets: item,
+            angle: Phaser.Math.Between(-180, 180),
+            duration: Phaser.Math.Between(1400, 2200),
+            repeat: -1
+          });
+
+          this.tweens.add({
+            targets: item,
+            alpha: { from: 1, to: 0.5 },
+            duration: Phaser.Math.Between(360, 700),
+            yoyo: true,
+            repeat: -1
+          });
+        }
+
+        spawnHazard(x, y, difficulty) {
+          const ac = this.hazards.create(x, y, "acUnit");
+          ac.setDepth(8);
+          ac.body.setAllowGravity(false);
+          ac.body.immovable = true;
+          ac.body.moves = false;
+          ac.body.velocity.y = 120 + difficulty * 230 + Phaser.Math.Between(0, 90);
+          ac.body.pushable = false;
+          ac.setAngularVelocity(Phaser.Math.Between(-55, 55));
+        }
+
+        createCollisions() {
+          this.physics.add.collider(this.player, this.platforms, this.onLandPlatform, null, this);
+          this.physics.add.overlap(this.player, this.collectibles, this.onCollect, null, this);
+          this.physics.add.overlap(this.player, this.hazards, this.onHitHazard, null, this);
+        }
+
+        createParticles() {
+          this.sparkles = this.add.particles(0, 0, "collectCircle", {
+            quantity: 2,
+            lifespan: 380,
+            speed: { min: 20, max: 140 },
+            scale: { start: 0.35, end: 0 },
+            alpha: { start: 1, end: 0 },
+            tint: [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonBlue, COLORS.neonYellow],
+            emitting: false
+          });
+          this.sparkles.setDepth(20);
+        }
+
+        onLandPlatform(player, platform) {
+          if (!platform.isUnstable || platform.triggered) return;
+          platform.triggered = true;
+
+          this.tweens.add({
+            targets: platform,
+            alpha: 0.25,
+            duration: 220,
+            yoyo: true,
+            repeat: 3
+          });
+
+          this.time.delayedCall(620, () => {
+            if (!platform.scene) return;
+            this.platforms.remove(platform, true, true);
+          });
+        }
+
+        onCollect(player, item) {
+          this.score += 12;
+          this.sparkles.emitParticleAt(item.x, item.y, 18);
+          item.destroy();
+        }
+
+        onHitHazard() {
+          this.player.setTint(COLORS.danger);
+          this.gameOver();
+        }
+
+        update(_time, delta) {
+          if (!this.gameRunning) return;
+
+          const dt = delta / 1000;
+          const { width, height } = this.scale;
+          const paceMultiplier = 1 + clamp(this.score / 900, 0, 2.5);
+          const scrollSpeed = this.baseScrollSpeed * paceMultiplier;
+          const difficulty = clamp(this.score / 1400, 0, 1);
+
+          this.heightScore += scrollSpeed * dt * 0.35;
+          this.score += dt * (2.2 + paceMultiplier * 0.6);
+
+          this.speedText.setText("Pace x" + paceMultiplier.toFixed(1));
+          this.scoreText.setText("Score: " + Math.floor(this.score));
+          this.heightText.setText("Height: " + Math.floor(this.heightScore) + "m");
+
+          this.moveWorldDown(scrollSpeed, dt);
+          this.handlePlayerInput();
+          this.generateRowsIfNeeded(width, difficulty);
+          this.cleanupOffscreen(height);
+          this.checkGameOver(height);
+        }
+
+        moveWorldDown(scrollSpeed, dt) {
+          const move = scrollSpeed * dt;
+
+          this.platforms.children.iterate((platform) => {
+            if (!platform) return;
+            platform.y += move;
+            platform.refreshBody();
+          });
+
+          this.collectibles.children.iterate((item) => {
+            if (!item) return;
+            item.y += move;
+          });
+
+          this.hazards.children.iterate((hazard) => {
+            if (!hazard || !hazard.body) return;
+            hazard.y += move + hazard.body.velocity.y * dt;
+          });
+        }
+
+        handlePlayerInput() {
+          if (!this.player || !this.player.body) return;
+
+          const accelX = 950;
+          const vx = 210;
+          const jumpPower = -545;
+          const body = this.player.body;
+
+          const leftDown = (this.cursors.left && this.cursors.left.isDown) || this.domInput.left;
+          const rightDown = (this.cursors.right && this.cursors.right.isDown) || this.domInput.right;
+
+          if (leftDown && !rightDown) {
+            this.player.setAccelerationX(-accelX);
+            this.player.setVelocityX(-vx);
+          } else if (rightDown && !leftDown) {
+            this.player.setAccelerationX(accelX);
+            this.player.setVelocityX(vx);
+          } else {
+            this.player.setAccelerationX(0);
+          }
+
+          const jumpPressedPhaser =
+            Phaser.Input.Keyboard.JustDown(this.jumpKeys.jumpSpace) ||
+            Phaser.Input.Keyboard.JustDown(this.jumpKeys.jumpUp);
+          const jumpPressed = jumpPressedPhaser || this.domInput.justJump;
+          this.domInput.justJump = false;
+          const now = this.time.now;
+          const grounded = body.blocked.down || body.touching.down;
+          if (grounded) {
+            this.lastGroundedTime = now;
+          }
+          if (jumpPressed) {
+            this.lastJumpPressTime = now;
+          }
+
+          const jumpBuffered = now - this.lastJumpPressTime <= this.jumpBufferMs;
+          const canUseCoyote = now - this.lastGroundedTime <= this.coyoteMs;
+
+          if (jumpBuffered && canUseCoyote) {
+            this.player.setVelocityY(jumpPower);
+            this.sparkles.emitParticleAt(this.player.x, this.player.y + 18, 8);
+            this.lastJumpPressTime = -9999;
+            this.lastGroundedTime = -9999;
+          }
+
+          this.player.x = Phaser.Math.Wrap(this.player.x, -8, this.scale.width + 8);
+        }
+
+        generateRowsIfNeeded(width, difficulty) {
+          const minYNeeded = -140;
+          while (this.lastGeneratedY > minYNeeded) {
+            this.lastGeneratedY -= Phaser.Math.Between(88, Math.floor(122 + difficulty * 30));
+            this.spawnPlatformRow(this.lastGeneratedY, width, difficulty);
+          }
+        }
+
+        cleanupOffscreen(height) {
+          this.platforms.children.iterate((platform) => {
+            if (!platform) return;
+            if (platform.y > height + 40) {
+              this.platforms.remove(platform, true, true);
+            }
+          });
+
+          this.collectibles.children.iterate((item) => {
+            if (!item) return;
+            if (item.y > height + 70) {
+              item.destroy();
+            }
+          });
+
+          this.hazards.children.iterate((hazard) => {
+            if (!hazard) return;
+            if (hazard.y > height + 90) {
+              hazard.destroy();
+            }
+          });
+        }
+
+        checkGameOver(height) {
+          if (!this.player || !this.player.body) return;
+          if (this.player.y > height + 24 || this.player.y < -120) {
+            this.gameOver();
+          }
+        }
+
+        gameOver() {
+          if (!this.gameRunning) return;
+          this.gameRunning = false;
+
+          this.bestScore = Math.max(this.bestScore, Math.floor(this.score));
+          this.time.delayedCall(350, () => {
+            this.scene.start("GameOverScene", {
+              score: Math.floor(this.score),
+              height: Math.floor(this.heightScore),
+              best: this.bestScore
+            });
+          });
+        }
+      }
+
+      const container = document.getElementById("game-container");
+      container.focus();
+
+      window.addEventListener("keydown", (event) => {
+        const key = event.code || event.key;
+        if (
+          key === "ArrowUp" ||
+          key === "ArrowDown" ||
+          key === "ArrowLeft" ||
+          key === "ArrowRight" ||
+          key === "Space" ||
+          key === "Enter"
+        ) {
+          event.preventDefault();
+        }
+      }, { passive: false });
+
+      const config = {
+        type: Phaser.AUTO,
+        parent: "game-container",
+        width: BASE_WIDTH,
+        height: BASE_HEIGHT,
+        backgroundColor: "#060812",
+        physics: {
+          default: "arcade",
+          arcade: {
+            gravity: { y: 1150 },
+            debug: false
+          }
+        },
+        scale: {
+          mode: Phaser.Scale.RESIZE,
+          autoCenter: Phaser.Scale.CENTER_BOTH
+        },
+        scene: [BootScene, StartScene, GameScene, GameOverScene]
+      };
+
+      const game = new Phaser.Game(config);
+
+      const resizeHandler = () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        game.scale.resize(w, h);
+
+        const active = game.scene.getScenes(true);
+        active.forEach((scene) => {
+          if (scene && scene.drawBackground) {
+            scene.drawBackground(w, h);
+          }
+        });
+      };
+
+      window.addEventListener("resize", resizeHandler);
+      resizeHandler();
+    })();
+  </script>
+</body>
+</html>
