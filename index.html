@@ -681,6 +681,8 @@
 
         moveWorldDown(scrollSpeed, dt) {
           const move = scrollSpeed * dt;
+          // Keep generator anchor synced with world movement so endless spawning never stalls.
+          this.lastGeneratedY += move;
 
           this.platforms.children.iterate((platform) => {
             if (!platform) return;
