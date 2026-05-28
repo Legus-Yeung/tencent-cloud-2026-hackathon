@@ -317,6 +317,7 @@
           this.coyoteMs = 110;
           this.lastJumpPressTime = -9999;
           this.lastGroundedTime = -9999;
+          this.preferredLane = 2;
         }
 
         create() {
@@ -534,6 +535,8 @@
           const laneWidth = worldWidth / laneCount;
           const maxMissing = difficulty > 0.6 ? 2 : 1;
           let missing = 0;
+          let builtCount = 0;
+          let builtForcedLane = false;
 
           for (let lane = 0; lane < laneCount; lane++) {
             const laneIsForced = options.forceLane === lane;
@@ -542,7 +545,7 @@
               continue;
             }
 
-            const px = laneWidth * lane + laneWidth * 0.5 + Phaser.Math.Between(-16, 16);
+            const px = laneWidth * lane + laneWidth * 0.5 + Phaser.Math.Between(-10, 10);
             const unstableChance = 0.08 + difficulty * 0.18;
             const isUnstable = options.forceStable ? false : Math.random() < unstableChance;
             const tex = isUnstable ? "bambooUnstable" : "bambooStable";
@@ -558,10 +561,37 @@
             platform.isUnstable = isUnstable;
             platform.triggered = false;
             platform.depth = 4;
+            builtCount++;
+            if (laneIsForced) {
+              builtForcedLane = true;
+            }
 
             if (Math.random() < 0.40) {
               this.spawnCollectible(px + Phaser.Math.Between(-26, 26), y - 34);
             }
+          }
+
+          // Safety net: if procedural skips become too harsh, ensure one reachable path exists.
+          if (options.forceLane !== null && options.forceLane !== undefined && !builtForcedLane) {
+            const forcePx = laneWidth * options.forceLane + laneWidth * 0.5 + Phaser.Math.Between(-8, 8);
+            const safePlatform = this.platforms.create(forcePx, y, "bambooStable");
+            safePlatform.setScale(0.82, 1);
+            safePlatform.refreshBody();
+            safePlatform.isUnstable = false;
+            safePlatform.triggered = false;
+            safePlatform.depth = 4;
+            builtCount++;
+          }
+
+          if (builtCount === 0) {
+            const lane = Phaser.Math.Between(1, 3);
+            const px = laneWidth * lane + laneWidth * 0.5;
+            const fallback = this.platforms.create(px, y, "bambooStable");
+            fallback.setScale(0.84, 1);
+            fallback.refreshBody();
+            fallback.isUnstable = false;
+            fallback.triggered = false;
+            fallback.depth = 4;
           }
 
           if (Math.random() < 0.22 + difficulty * 0.35) {
@@ -752,8 +782,17 @@
         generateRowsIfNeeded(width, difficulty) {
           const minYNeeded = -140;
           while (this.lastGeneratedY > minYNeeded) {
-            this.lastGeneratedY -= Phaser.Math.Between(88, Math.floor(122 + difficulty * 30));
-            this.spawnPlatformRow(this.lastGeneratedY, width, difficulty);
+            // Keep endless rows jumpable; increase spacing gently with difficulty.
+            this.lastGeneratedY -= Phaser.Math.Between(74, Math.floor(98 + difficulty * 16));
+
+            const laneShiftChance = 0.45 + difficulty * 0.25;
+            if (Math.random() < laneShiftChance) {
+              this.preferredLane = clamp(this.preferredLane + choose([-1, 1]), 1, 3);
+            }
+            this.spawnPlatformRow(this.lastGeneratedY, width, difficulty, {
+              forceLane: this.preferredLane,
+              forceStable: Math.random() < 0.22
+            });
           }
         }
 
